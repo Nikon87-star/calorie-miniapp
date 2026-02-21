@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Калькулятор калорий</title>
+
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root{
+      --bg: var(--tg-theme-bg-color, #0b0b12);
+      --card: var(--tg-theme-secondary-bg-color, #141423);
+      --text: var(--tg-theme-text-color, #ffffff);
+      --hint: var(--tg-theme-hint-color, #9aa0a6);
+      --link: var(--tg-theme-link-color, #6ea8ff);
+      --btn: var(--tg-theme-button-color, #2b7cff);
+      --btnText: var(--tg-theme-button-text-color, #ffffff);
+      --radius: 18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:18px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    .wrap{max-width:520px;margin:0 auto}
+    .header{
+      padding:16px 16px 10px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, rgba(43,124,255,.25), rgba(255,77,166,.18));
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    h1{margin:0;font-size:20px}
+    .sub{margin:6px 0 0;color:var(--hint);font-size:13px;line-height:1.35}
+    .card{
+      margin-top:12px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      padding:14px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.25);
+    }
+    .row{display:grid;grid-template-columns:1fr;gap:10px}
+    label{font-size:13px;color:var(--hint)}
+    input, select{
+      width:100%;
+      padding:12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      outline:none;
+    }
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn{
+      width:100%;
+      padding:13px 14px;
+      border:0;
+      border-radius: 14px;
+      background: var(--btn);
+      color: var(--btnText);
+      font-weight: 700;
+      cursor:pointer;
+    }
+    .btn.secondary{
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.10);
+    }
+    .result{
+      margin-top:10px;
+      padding:12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.16);
+      border: 1px dashed rgba(255,255,255,.14);
+      line-height: 1.45;
+      font-size: 14px;
+      white-space: pre-line;
+    }
+    .mini{margin-top:10px;font-size:12px;color:var(--hint);line-height:1.35}
+    a{color:var(--link)}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>Калькулятор суточной нормы калорий</h1>
+      <div class="sub">
+        Быстрый расчёт по формуле Mifflin–St Jeor + коэффициент активности.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="two">
+          <div>
+            <label>Пол</label>
+            <select id="sex">
+              <option value="female">Женщина</option>
+              <option value="male">Мужчина</option>
+            </select>
+          </div>
+          <div>
+            <label>Возраст (лет)</label>
+            <input id="age" inputmode="numeric" placeholder="например 32" />
+          </div>
+        </div>
+
+        <div class="two">
+          <div>
+            <label>Рост (см)</label>
+            <input id="height" inputmode="numeric" placeholder="например 168" />
+          </div>
+          <div>
+            <label>Вес (кг)</label>
+            <input id="weight" inputmode="decimal" placeholder="например 64.5" />
+          </div>
+        </div>
+
+        <div>
+          <label>Активность</label>
+          <select id="activity">
+            <option value="1.2">1.2 — сидячая (мало движения)</option>
+            <option value="1.375">1.375 — лёгкая (1–3 тренировки/нед)</option>
+            <option value="1.55" selected>1.55 — средняя (3–5 трен/нед)</option>
+            <option value="1.725">1.725 — высокая (6–7 трен/нед)</option>
+            <option value="1.9">1.9 — очень высокая (спорт/тяжёлый труд)</option>
+          </select>
+        </div>
+
+        <button class="btn" id="calc">Рассчитать</button>
+        <button class="btn secondary" id="copy" style="display:none;">Скопировать результат</button>
+
+        <div id="out" class="result" style="display:none;"></div>
+
+        <div class="mini">
+          * Это приблизительный расчёт. Если есть заболевания/беременность/ГВ — лучше уточнить у врача/нутрициолога.
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Делаем так, чтобы страница была "дружелюбна" и внутри Telegram, и в обычном браузере
+  const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  const $ = (id) => document.getElementById(id);
+
+  function toNum(v){
+    if (!v) return NaN;
+    return Number(String(v).replace(",", ".").trim());
+  }
+  function round(n){ return Math.round(n); }
+
+  function mifflin(sex, weight, height, age){
+    const base = 10*weight + 6.25*height - 5*age;
+    return sex === "male" ? base + 5 : base - 161;
+  }
+
+  function buildText(tdee){
+    const mild = tdee * 0.90;  // -10%
+    const cut  = tdee * 0.80;  // -20%
+    const gain = tdee * 1.10;  // +10%
+    return [
+      `Поддержание: ${round(tdee)} ккал/день`,
+      `Мягкое снижение (-10%): ${round(mild)} ккал`,
+      `Похудение (-20%): ${round(cut)} ккал`,
+      `Набор (+10%): ${round(gain)} ккал`
+    ].join("\n");
+  }
+
+  $("calc").addEventListener("click", () => {
+    const sex = $("sex").value;
+    const age = toNum($("age").value);
+    const height = toNum($("height").value);
+    const weight = toNum($("weight").value);
+    const act = toNum($("activity").value);
+
+    // простая проверка
+    if (!Number.isFinite(age) || age < 10 || age > 100) return alert("Возраст введи числом (10–100).");
+    if (!Number.isFinite(height) || height < 120 || height > 230) return alert("Рост введи числом (120–230).");
+    if (!Number.isFinite(weight) || weight < 35 || weight > 250) return alert("Вес введи числом (35–250).");
+
+    const bmr = mifflin(sex, weight, height, age);
+    const tdee = bmr * act;
+
+    const text = buildText(tdee);
+
+    $("out").style.display = "block";
+    $("out").textContent = "✅ Готово!\n\n" + text;
+    $("copy").style.display = "block";
+
+    // Если внутри Telegram — можно подсветить главную кнопку (не обязательно)
+    if (tg && tg.MainButton){
+      tg.MainButton.setText("Готово ✅");
+      tg.MainButton.show();
+    }
+  });
+
+  $("copy").addEventListener("click", async () => {
+    const t = $("out").textContent || "";
+    try{
+      await navigator.clipboard.writeText(t);
+      alert("Скопировано ✅");
+    }catch(e){
+      alert("Не получилось скопировать. Выдели текст и скопируй вручную 🙂");
+    }
+  });
+</script>
+</body>
+</html>
